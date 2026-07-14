@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from takopi.chat_help import ChatHelpOptions, format_chat_help
+from takopi_transport_feishu.chat_help import ChatHelpOptions, format_chat_help
 from takopi.config import ConfigError
 from takopi.context import RunContext
 from takopi.ids import RESERVED_CHAT_COMMANDS
