@@ -1,33 +1,18 @@
 # Publishing to PyPI
 
-## Option A: one-time upload with API token (fastest)
+See [takopi-engine-cursor/PUBLISHING.md](https://github.com/RicardoKLee/takopi-engine-cursor/blob/master/PUBLISHING.md) for the full release guide.
 
-1. Create an API token at https://pypi.org/manage/account/token/
-2. Run:
+Quick links for this package:
 
-```sh
-export UV_PUBLISH_TOKEN='pypi-...'
-bash scripts/publish-all.sh
-```
+- PyPI Trusted Publisher: https://pypi.org/manage/project/takopi-transport-feishu/settings/publishing/
+- GitHub workflow: `.github/workflows/publish.yml`
+- Release: `git tag vX.Y.Z && git push origin vX.Y.Z` (version must match `pyproject.toml`)
 
-## Option B: GitHub Actions trusted publishing (recommended for releases)
-
-For each plugin repo, add a **pending publisher** on PyPI:
-
-https://pypi.org/manage/account/publishing/
+Trusted Publisher fields:
 
 | Field | Value |
 |-------|-------|
-| PyPI project name | `takopi-transport-feishu` (or qoder / feishu) |
 | Owner | `RicardoKLee` |
 | Repository | `takopi-transport-feishu` |
 | Workflow | `publish.yml` |
-| Environment | *(leave empty)* |
-
-Then trigger:
-
-```sh
-gh workflow run publish.yml -R RicardoKLee/takopi-transport-feishu
-```
-
-Or create a GitHub Release to publish automatically.
+| Environment | `pypi` |
