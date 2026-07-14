@@ -3,12 +3,26 @@ name = "takopi-transport-feishu"
 version = "0.2.0"
 description = "Feishu/Lark transport plugin for Takopi"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.14"
+authors = [{ name = "RicardoKLee" }]
 dependencies = [
   "takopi>=0.23.0",
   "lark-oapi>=1.4.0",
   "anyio>=4.12.0",
 ]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/RicardoKLee/takopi-transport-feishu"
+Repository = "https://github.com/RicardoKLee/takopi-transport-feishu"
+Issues = "https://github.com/RicardoKLee/takopi-transport-feishu/issues"
 
 [project.entry-points."takopi.transport_backends"]
 feishu = "takopi_transport_feishu.backend:BACKEND"
@@ -25,6 +39,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/takopi_transport_feishu"]
+
+[tool.hatch.build.targets.sdist]
+include = ["LICENSE", "README.md", "src/takopi_transport_feishu", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
