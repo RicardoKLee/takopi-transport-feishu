@@ -5,13 +5,13 @@ Feishu/Lark transport plugin for [Takopi](https://github.com/RicardoKLee/takopi)
 ## install
 
 ```sh
-uv pip install takopi-transport-feishu
+uv pip install "takopi-transport-feishu @ git+https://github.com/RicardoKLee/takopi-transport-feishu.git"
 ```
 
 or from this checkout:
 
 ```sh
-uv pip install -e /path/to/takopi-transport-feishu
+uv pip install -e .
 ```
 
 ## usage
