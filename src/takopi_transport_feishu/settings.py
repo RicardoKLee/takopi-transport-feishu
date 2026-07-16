@@ -32,6 +32,7 @@ class FeishuTransportSettings:
     domain: str = "https://open.feishu.cn"
     log_level: str = "INFO"
     trigger_mode_default: Literal["all", "mentions"] = "all"
+    use_card: bool = True
     files: FeishuFilesSettings = field(default_factory=FeishuFilesSettings)
 
     @property
@@ -86,6 +87,8 @@ def parse_feishu_settings(raw: dict[str, Any]) -> FeishuTransportSettings:
         "mentions" if trigger_raw == "mentions" else "all"
     )
 
+    use_card = bool(raw.get("use_card", True))
+
     files_raw = raw.get("files")
     files = FeishuFilesSettings()
     if isinstance(files_raw, dict):
@@ -113,5 +116,6 @@ def parse_feishu_settings(raw: dict[str, Any]) -> FeishuTransportSettings:
         domain=domain,
         log_level=log_level,
         trigger_mode_default=trigger_mode_default,
+        use_card=use_card,
         files=files,
     )

@@ -21,6 +21,7 @@ from lark_oapi.ws import Client as WsClient
 
 from takopi.logging import get_logger
 
+from .card import build_card, card_message_content
 from .messages import parse_incoming_message
 from .render import text_message_content
 from .settings import FeishuTransportSettings
@@ -58,6 +59,7 @@ class FeishuClient:
             .build()
         )
         self._incoming: Queue[P2ImMessageReceiveV1] = Queue()
+        self._card_actions: Queue[tuple[str, dict[str, Any]]] = Queue()
         self._ws_thread: threading.Thread | None = None
         self._bot_identity: BotIdentity | None = None
 
@@ -77,6 +79,23 @@ class FeishuClient:
         # Read receipts are pushed automatically; ignore to avoid SDK errors.
         del data
 
+    def _on_card_action(self, data: object) -> object:
+        event = getattr(data, "event", None)
+        chat_id = ""
+        action_value: dict[str, Any] = {}
+        if event is not None:
+            context = getattr(event, "context", None)
+            if context is not None:
+                chat_id = getattr(context, "open_chat_id", "") or ""
+            action = getattr(event, "action", None)
+            if action is not None:
+                action_value = getattr(action, "value", None) or {}
+        cmd = action_value.get("cmd", "") if isinstance(action_value, dict) else ""
+        logger.info("feishu.card_action", chat_id=chat_id, cmd=cmd)
+        if chat_id:
+            self._card_actions.put((chat_id, action_value))
+        return data
+
     def _build_event_handler(self) -> EventDispatcherHandler:
         builder = EventDispatcherHandler.builder(
             "",
@@ -91,6 +110,7 @@ class FeishuClient:
                 self._on_p2p_chat_entered,
             ),
             ("register_p2_im_chat_member_bot_added_v1", self._on_bot_added),
+            ("register_p2_card_action_trigger", self._on_card_action),
         ):
             try:
                 builder = getattr(builder, register_name)(handler)
@@ -150,6 +170,34 @@ class FeishuClient:
     async def close(self) -> None:
         # WS client blocks until process exit; daemon thread is enough for MVP.
         return None
+
+    async def upload_image(self, *, image_bytes: bytes) -> str | None:
+        def _upload() -> str | None:
+            import io
+
+            from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
+
+            req = (
+                CreateImageRequest.builder()
+                .request_body(
+                    CreateImageRequestBody.builder()
+                    .image_type("message")
+                    .image(io.BytesIO(image_bytes))
+                    .build()
+                )
+                .build()
+            )
+            resp = self._client.im.v1.image.create(req)
+            if not resp.success():
+                logger.warning(
+                    "feishu.upload_image.failed",
+                    code=resp.code,
+                    msg=resp.msg,
+                )
+                return None
+            return resp.data.image_key if resp.data else None
+
+        return await anyio.to_thread.run_sync(_upload)
 
     async def fetch_bot_identity(self) -> BotIdentity:
         if self._bot_identity is not None:
@@ -218,6 +266,19 @@ class FeishuClient:
                 logger.info("feishu.event.ignored", reason="parse_filtered")
         return parsed
 
+    async def poll_card_actions(self) -> list[tuple[str, dict[str, Any]]]:
+        """Drain pending card action callbacks (button clicks)."""
+        def _drain() -> list[tuple[str, dict[str, Any]]]:
+            items: list[tuple[str, dict[str, Any]]] = []
+            while True:
+                try:
+                    items.append(self._card_actions.get_nowait())
+                except Empty:
+                    break
+            return items
+
+        return await anyio.to_thread.run_sync(_drain)
+
     async def send_text(
         self,
         *,
@@ -272,6 +333,91 @@ class FeishuClient:
 
         return await anyio.to_thread.run_sync(_send)
 
+    async def send_card(
+        self,
+        *,
+        chat_id: str,
+        card_content: str,
+        reply_to_message_id: str | None = None,
+        reply_in_thread: bool = False,
+    ) -> str | None:
+        def _send() -> str | None:
+            if reply_to_message_id:
+                req = (
+                    ReplyMessageRequest.builder()
+                    .message_id(reply_to_message_id)
+                    .request_body(
+                        ReplyMessageRequestBody.builder()
+                        .msg_type("interactive")
+                        .content(card_content)
+                        .reply_in_thread(reply_in_thread)
+                        .build()
+                    )
+                    .build()
+                )
+                resp = self._client.im.v1.message.reply(req)
+            else:
+                req = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("interactive")
+                        .content(card_content)
+                        .build()
+                    )
+                    .build()
+                )
+                resp = self._client.im.v1.message.create(req)
+            if not resp.success():
+                logger.warning(
+                    "feishu.send_card.failed",
+                    code=resp.code,
+                    msg=resp.msg,
+                    chat_id=chat_id,
+                )
+                return None
+            data = resp.data
+            if data is None:
+                return None
+            return data.message_id
+
+        return await anyio.to_thread.run_sync(_send)
+
+    async def send_message(
+        self,
+        *,
+        chat_id: str,
+        text: str,
+        use_card: bool = True,
+        streaming: bool = False,
+        show_stop_button: bool = False,
+        reply_to_message_id: str | None = None,
+        reply_in_thread: bool = False,
+    ) -> str | None:
+        """Send *text* as either an interactive card or plain text."""
+        if use_card:
+            content = card_message_content(
+                build_card(
+                    text,
+                    streaming=streaming,
+                    show_stop_button=show_stop_button,
+                )
+            )
+            return await self.send_card(
+                chat_id=chat_id,
+                card_content=content,
+                reply_to_message_id=reply_to_message_id,
+                reply_in_thread=reply_in_thread,
+            )
+        return await self.send_text(
+            chat_id=chat_id,
+            text=text,
+            reply_to_message_id=reply_to_message_id,
+            reply_in_thread=reply_in_thread,
+        )
+
     async def edit_text(self, *, message_id: str, text: str) -> bool:
         content = text_message_content(text)
 
@@ -296,6 +442,36 @@ class FeishuClient:
             if not resp.success():
                 logger.warning(
                     "feishu.edit.failed",
+                    code=resp.code,
+                    msg=resp.msg,
+                    message_id=message_id,
+                )
+                return False
+            return True
+
+        return await anyio.to_thread.run_sync(_edit)
+
+    async def edit_card(self, *, message_id: str, card_content: str) -> bool:
+        def _edit() -> bool:
+            from lark_oapi.api.im.v1 import (
+                PatchMessageRequest,
+                PatchMessageRequestBody,
+            )
+
+            req = (
+                PatchMessageRequest.builder()
+                .message_id(message_id)
+                .request_body(
+                    PatchMessageRequestBody.builder()
+                    .content(card_content)
+                    .build()
+                )
+                .build()
+            )
+            resp = self._client.im.v1.message.patch(req)
+            if not resp.success():
+                logger.warning(
+                    "feishu.edit_card.failed",
                     code=resp.code,
                     msg=resp.msg,
                     message_id=message_id,

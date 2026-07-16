@@ -63,7 +63,11 @@ async def _send_startup(cfg: FeishuBridgeConfig) -> None:
     if not chat_id:
         logger.info("startup.skipped", reason="no chat_id configured")
         return
-    sent_id = await cfg.client.send_text(chat_id=chat_id, text=cfg.startup_msg)
+    sent_id = await cfg.client.send_message(
+        chat_id=chat_id,
+        text=cfg.startup_msg,
+        use_card=cfg.settings.use_card,
+    )
     if sent_id:
         logger.info("startup.sent", chat_id=chat_id, message_id=sent_id)
 
@@ -76,9 +80,10 @@ async def _send_plain_reply(
     text: str,
     thread_id: str | None = None,
 ) -> None:
-    await cfg.client.send_text(
+    await cfg.client.send_message(
         chat_id=chat_id,
         text=text,
+        use_card=cfg.settings.use_card,
         reply_to_message_id=reply_to_message_id,
         reply_in_thread=thread_id is not None,
     )
@@ -414,3 +419,10 @@ async def run_main_loop(
         )
         for incoming in messages:
             await handle_incoming(incoming)
+
+        card_actions = await cfg.client.poll_card_actions()
+        for chat_id, action_value in card_actions:
+            cmd = action_value.get("cmd", "") if isinstance(action_value, dict) else ""
+            if cmd == "stop":
+                cancelled = await cancel_for_chat(chat_id, None)
+                logger.info("card_action.stop", chat_id=chat_id, cancelled=cancelled)

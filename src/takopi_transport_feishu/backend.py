@@ -103,7 +103,7 @@ class FeishuBackend(TransportBackend):
     ) -> None:
         settings = _get_feishu_settings(transport_config)
         client = FeishuClient(settings)
-        transport = FeishuTransport(client)
+        transport = FeishuTransport(client, use_card=settings.use_card)
         presenter = FeishuPresenter(message_overflow=settings.message_overflow)
         exec_cfg = ExecBridgeConfig(
             transport=transport,
