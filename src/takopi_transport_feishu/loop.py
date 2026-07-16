@@ -412,17 +412,31 @@ async def run_main_loop(
             context=context,
         )
 
-    while True:
-        messages = await cfg.client.poll_incoming(
-            timeout_s=1.0,
-            bot_open_id=bot.open_id,
-        )
-        for incoming in messages:
-            await handle_incoming(incoming)
+    async def _card_action_loop() -> None:
+        while True:
+            card_actions = await cfg.client.poll_card_actions()
+            for chat_id, action_value in card_actions:
+                cmd = (
+                    action_value.get("cmd", "")
+                    if isinstance(action_value, dict)
+                    else ""
+                )
+                if cmd == "stop":
+                    cancelled = await cancel_for_chat(chat_id, None)
+                    logger.info(
+                        "card_action.stop",
+                        chat_id=chat_id,
+                        cancelled=cancelled,
+                    )
+            await anyio.sleep(0.2)
 
-        card_actions = await cfg.client.poll_card_actions()
-        for chat_id, action_value in card_actions:
-            cmd = action_value.get("cmd", "") if isinstance(action_value, dict) else ""
-            if cmd == "stop":
-                cancelled = await cancel_for_chat(chat_id, None)
-                logger.info("card_action.stop", chat_id=chat_id, cancelled=cancelled)
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_card_action_loop)
+
+        while True:
+            messages = await cfg.client.poll_incoming(
+                timeout_s=1.0,
+                bot_open_id=bot.open_id,
+            )
+            for incoming in messages:
+                await handle_incoming(incoming)
