@@ -327,6 +327,62 @@ async def run_main_loop(
                 )
             return
 
+        if command_id == "resume":
+            from .command_utils import split_command_args as _split_args
+
+            tokens = _split_args(args_text)
+            if not tokens:
+                await _send_plain_reply(
+                    cfg,
+                    chat_id=incoming.chat_id,
+                    reply_to_message_id=incoming.message_id,
+                    text="usage: `/resume <session_id>` or `/resume <engine> <session_id>`",
+                    thread_id=incoming.thread_id,
+                )
+                return
+            engine_ids_set = {e.lower() for e in cfg.runtime.engine_ids}
+            resume_engine: str | None = None
+            resume_session_id: str
+            prompt_text = "continue"
+            if len(tokens) >= 2 and tokens[0].lower() in engine_ids_set:
+                resume_engine = tokens[0].lower()
+                resume_session_id = tokens[1]
+                if len(tokens) >= 3:
+                    prompt_text = " ".join(tokens[2:]).strip() or "continue"
+            else:
+                resume_session_id = tokens[0]
+                if len(tokens) >= 2:
+                    prompt_text = " ".join(tokens[1:]).strip() or "continue"
+            target_engine = resume_engine or await resolve_chat_engine(
+                runtime=cfg.runtime,
+                chat_prefs=chat_prefs,
+                chat_id=incoming.chat_id,
+                thread_id=incoming.thread_id,
+                explicit_engine=None,
+                default_engine_override=default_engine_override,
+                state_store=state_store,
+            )
+            resume_token = ResumeToken(engine=target_engine, value=resume_session_id)
+            if cfg.session_mode == "chat":
+                session_store.set(
+                    chat_id=incoming.chat_id,
+                    thread_id=incoming.thread_id,
+                    token=resume_token,
+                )
+            ambient_context = await resolve_ambient_context(
+                state_store,
+                chat_id=incoming.chat_id,
+                thread_id=incoming.thread_id,
+            )
+            await run_job(
+                incoming,
+                prompt=prompt_text,
+                engine_id=target_engine,
+                resume_token=resume_token,
+                context=ambient_context,
+            )
+            return
+
         if command_id is not None and command_id in BUILTIN_CHAT_COMMANDS:
             await handle_builtin_command(
                 cfg,

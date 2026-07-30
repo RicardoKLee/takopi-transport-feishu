@@ -35,6 +35,7 @@ def format_chat_help(options: ChatHelpOptions) -> str:
         "- `/trigger` — show trigger mode; `/trigger set all|mentions`; `/trigger clear`",
         "- `/ctx` — show project binding; `/ctx set <project> [@branch]`; `/ctx clear`",
         "- `/new` — clear conversation session and start fresh",
+        "- `/resume <session_id>` — resume a session by its ID",
         "- `/cancel` — cancel the current running task",
     ]
 
